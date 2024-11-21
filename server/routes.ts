@@ -2,18 +2,294 @@ import { ObjectId } from "mongodb";
 
 import { Router, getExpressRouter } from "./framework/router";
 
-import { Authing, Friending, Posting, Sessioning } from "./app";
+import { Authing, Friending, Posting, Project, ProjectMember, Sessioning, Task } from "./app";
 import { PostOptions } from "./concepts/posting";
 import { SessionDoc } from "./concepts/sessioning";
 import Responses from "./responses";
 
 import { z } from "zod";
+import { NotAllowedError } from "./concepts/errors";
 
 /**
  * Web server routes for the app. Implements synchronizations between concepts.
  */
 class Routes {
   // Synchronize the concepts from `app.ts`.
+
+  @Router.get("/projects/members")
+  async testGetAllProjectMemberPairs(session: SessionDoc) {
+    return await ProjectMember.getAllGroupItems();
+  }
+
+  /**
+   * create project
+   * creator will be current session user with given name
+   * name must be unique
+   */
+  @Router.post("/projects")
+  async createProject(session: SessionDoc, name: string) {
+    const user = Sessioning.getUser(session);
+    // get the project
+    const project = (await Project.create(user, name)).project;
+    // add creator as a member for that project
+    if (project) {
+      await ProjectMember.addGroupItem(project._id, user);
+    }
+
+    return { msg: "Successfully created project!", project: project };
+  }
+
+  /**
+   * delete project
+   * only the creator of the project can delete the project
+   * TODO: all tasks associated with the project will be deleted
+   */
+  @Router.delete("/projects/:id")
+  async deleteProject(session: SessionDoc, id: string) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(id);
+    // only the creator should be able to delete the project
+    await Project.assertUserIsCreator(projectId, user);
+    await ProjectMember.deleteAllItemsInGroup(projectId);
+
+    // delete all tasks associated with the project
+    await Task.deleteTasksForProject(projectId);
+    return await Project.deleteProject(projectId);
+  }
+
+  /**
+   * get project given either a name or ID
+   */
+  @Router.get("/projects")
+  async getProject(session: SessionDoc, name?: string, id?: string) {
+    const user = Sessioning.getUser(session);
+    let project;
+    let projectId;
+    if (id) {
+      projectId = new ObjectId(id);
+      await ProjectMember.assertItemInGroup(projectId, user);
+      project = await Project.getProject(projectId);
+    } else if (name) {
+      project = await Project.getProjectByName(name);
+    } else {
+      throw new NotAllowedError("Did not specify project to fetch!");
+    }
+    return project;
+  }
+
+  /**
+   * get projects that a user is a part of
+   */
+  @Router.get("/user/projects")
+  async getUserProjects(session: SessionDoc) {
+    const user = Sessioning.getUser(session);
+    return await ProjectMember.getGroupsForItem(user);
+  }
+
+  /**
+   * update project name
+   * only creator of project can change project
+   */
+  @Router.patch("/project/name")
+  async updateProjectName(session: SessionDoc, id: string, name: string) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(id);
+    // only the creator should be able to update project anme
+    await Project.assertUserIsCreator(projectId, user);
+
+    return await Project.updateProjectName(projectId, name);
+  }
+
+  /**
+   * update project manager
+   * only creator of project can change project
+   * only other members of the project can be assigned as the new manager
+   */
+  @Router.patch("/project/manager")
+  async updateProjectManager(session: SessionDoc, id: string, manager: string) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(id);
+    // only the creator should be able to update project anme
+    await Project.assertUserIsCreator(projectId, user);
+
+    // TODO: double check that this is the best way to handle undefined input
+    let managerId = undefined;
+    let ret = { msg: "Manager not updated." };
+    if (manager) {
+      managerId = new ObjectId(manager);
+      // new manager must already be a member of the project
+      await ProjectMember.assertItemInGroup(projectId, managerId);
+      ret = await Project.updateProjectCreator(projectId, managerId);
+    }
+
+    return ret;
+  }
+
+  /**
+   * add a member to a project
+   * only creator of project can add a member to the project
+   */
+  @Router.post("/project/members")
+  async addMemberToProject(session: SessionDoc, id: string, member: string) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(id);
+    const newMember = new ObjectId(member);
+
+    await Project.assertUserIsCreator(projectId, user);
+    return await ProjectMember.addGroupItem(projectId, newMember);
+  }
+
+  /**
+   * delete a member from a project
+   * only creator of project can delete a member from the project
+   * TODO: update all tasks assigned to that member to null!
+   */
+  @Router.delete("/project/members")
+  async deleteMemberFromProject(session: SessionDoc, id: string, member: string) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(id);
+    const memberToDelete = new ObjectId(member);
+
+    await Project.assertUserIsCreator(projectId, user);
+
+    // TODO: update tasks assigned to that member to null
+
+    return await ProjectMember.removeGroupItem(projectId, memberToDelete);
+  }
+
+  /**
+   * get all members in a project
+   */
+  @Router.get("/project/members")
+  async getAllMembersInProject(session: SessionDoc, id: string) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(id);
+
+    await ProjectMember.assertItemInGroup(projectId, user);
+
+    return await ProjectMember.getItemsInGroup(projectId);
+  }
+
+  /**
+   * create task
+   * only project manager can create tasks for that project
+   * TODO: linking functionality? do we add a generic "comments" field that just takes longer string input?
+   * TODO: consider if we should limit the task description length (ex: 100 characters), then have extra "comments"
+   * box for more detail
+   */
+  @Router.post("/project/tasks")
+  async createTask(session: SessionDoc, project: string, description: string, assignee?: ObjectId) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(project);
+
+    await Project.assertUserIsCreator(projectId, user);
+    let assigneeId;
+    if (assignee) {
+      assigneeId = new ObjectId(assignee);
+      await ProjectMember.assertItemInGroup(projectId, assigneeId);
+    }
+
+    return await Task.create(description, projectId, assigneeId);
+  }
+
+  /**
+   * delete task
+   * only project manager can delete tasks for that project
+   */
+  @Router.delete("/project/tasks/:id")
+  async deleteTask(session: SessionDoc, task: string) {
+    const user = Sessioning.getUser(session);
+    const taskId = new ObjectId(task);
+
+    const projectId = (await Task.getTask(taskId))?.project;
+    if (!projectId) {
+      throw new NotAllowedError("Task does not exist!");
+    }
+    await Project.assertUserIsCreator(projectId, user);
+
+    await Task.delete(taskId);
+  }
+
+  /**
+   * get all tasks for a project
+   * only project members are able to see the tasks for a project
+   */
+  @Router.get("/project/tasks")
+  async getTasksForProject(session: SessionDoc, project: string) {
+    const user = Sessioning.getUser(session);
+    const projectId = new ObjectId(project);
+
+    await ProjectMember.assertItemInGroup(projectId, user);
+
+    return await Task.getAllTasksForProject(projectId);
+  }
+
+  /**
+   * get all tasks for a user
+   * current user can only see their own tasks
+   */
+  @Router.get("/user/tasks")
+  async getTasksForUser(session: SessionDoc) {
+    const user = Sessioning.getUser(session);
+
+    return await Task.getAllTasksForUser(user);
+  }
+
+  /**
+   * update task description
+   * only project manager can update details for a project's tasks
+   */
+  @Router.patch("/project/task/description")
+  async updateTaskDescription(session: SessionDoc, task: string, description: string) {
+    const user = Sessioning.getUser(session);
+    const taskId = new ObjectId(task);
+
+    const projectId = (await Task.getTask(taskId))?.project;
+    if (!projectId) {
+      throw new NotAllowedError("Task does not exist!");
+    }
+    await Project.assertUserIsCreator(projectId, user);
+
+    await Task.updateDescription(taskId, description);
+  }
+
+  /**
+   * update the user that the task is assigned to
+   * only manager of the project for that task can do this
+   */
+  @Router.patch("/project/task/assignee")
+  async updateTaskAssignee(session: SessionDoc, task: string, assignee?: string) {
+    const user = Sessioning.getUser(session);
+    const taskId = new ObjectId(task);
+
+    const projectId = (await Task.getTask(taskId))?.project;
+    if (!projectId) {
+      throw new NotAllowedError("Task does not exist!");
+    }
+    await Project.assertUserIsCreator(projectId, user);
+
+    const assigneeId = new ObjectId(assignee);
+    return await Task.updateAssignee(taskId, assigneeId);
+  }
+
+  /**
+   * unassign task
+   * only manager of the project for that task can do this
+   * TODO: double check unassignTask function
+   */
+  @Router.patch("/project/task/unassign")
+  async updateUnassignTask(session: SessionDoc, task: string) {
+    const user = Sessioning.getUser(session);
+    const taskId = new ObjectId(task);
+
+    const projectId = (await Task.getTask(taskId))?.project;
+    if (!projectId) {
+      throw new NotAllowedError("Task does not exist!");
+    }
+    await Project.assertUserIsCreator(projectId, user);
+
+    return await Task.unassignTask(taskId);
+  }
 
   @Router.get("/session")
   async getSessionUser(session: SessionDoc) {
