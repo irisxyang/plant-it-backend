@@ -6,7 +6,7 @@ export interface TaskDoc extends BaseDoc {
   description: string;
   project: ObjectId;
   // TODO: how to handle ? field
-  assignee?: ObjectId;
+  //   assignee?: ObjectId;
   completion: boolean;
 }
 
@@ -18,9 +18,9 @@ export default class TaskingConcept {
   }
 
   // TODO: double check assignee logic --> should be undefined if no assignee
-  async create(description: string, project: ObjectId, assignee?: ObjectId) {
+  async create(description: string, project: ObjectId) {
     const completion = false;
-    const _id = await this.tasks.createOne({ description, project, completion, assignee });
+    const _id = await this.tasks.createOne({ description, project, completion });
     return { msg: "Task successfully created!", task: await this.tasks.readOne({ _id }) };
   }
 
@@ -39,21 +39,21 @@ export default class TaskingConcept {
     return { msg: "Task description successfully updated!" };
   }
 
-  async updateAssignee(_id: ObjectId, assignee: ObjectId) {
-    await this.tasks.partialUpdateOne({ _id }, { assignee });
-    return { msg: "Task assignee successfully updated!" };
-  }
+  //   async updateAssignee(_id: ObjectId, assignee: ObjectId) {
+  //     await this.tasks.partialUpdateOne({ _id }, { assignee });
+  //     return { msg: "Task assignee successfully updated!" };
+  //   }
 
   async getTask(_id: ObjectId) {
     return await this.tasks.readOne({ _id });
   }
 
-  // TODO: how to set a doc field to be undefined?
-  async unassignTask(_id: ObjectId) {
-    const assignee = undefined;
-    await this.tasks.partialUpdateOne({ _id }, { assignee });
-    return { msg: "TODO: partial update to null or undefined?" };
-  }
+  //   // TODO: how to set a doc field to be undefined?
+  //   async unassignTask(_id: ObjectId) {
+  //     const assignee = undefined;
+  //     await this.tasks.partialUpdateOne({ _id }, { assignee });
+  //     return { msg: "TODO: partial update to null or undefined?" };
+  //   }
 
   async setCompletionStatus(_id: ObjectId, completion: boolean) {
     await this.tasks.partialUpdateOne({ _id }, { completion });
@@ -67,7 +67,7 @@ export default class TaskingConcept {
     return await this.tasks.readMany({ project });
   }
 
-  async getAllTasksForUser(assignee: ObjectId) {
-    return await this.tasks.readMany({ assignee });
-  }
+  //   async getAllTasksForUser(assignee: ObjectId) {
+  //     return await this.tasks.readMany({ assignee });
+  //   }
 }

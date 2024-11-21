@@ -76,12 +76,6 @@ const operations: Operation[] = [
     fields: { name: "input", id: "input" },
   },
   {
-    name: "Test Grouping (gets all group member pairs",
-    endpoint: "/api/projects/members",
-    method: "GET",
-    fields: {},
-  },
-  {
     name: "Get User's Projects",
     endpoint: "/api/user/projects",
     method: "GET",
@@ -148,15 +142,21 @@ const operations: Operation[] = [
     fields: { task: "input", description: "input" },
   },
   {
-    name: "Update Task Assignee",
-    endpoint: "/api/project/task/assignee",
-    method: "GET",
+    name: "Add Task Assignee",
+    endpoint: "/api/project/task/assignees",
+    method: "POST",
     fields: { task: "input", assignee: "input" },
   },
   {
-    name: "TODO: Unassign Task",
-    endpoint: "/api/project/task/unassign",
-    method: "PATCH",
+    name: "Unassign Task",
+    endpoint: "/api/project/task/assignees",
+    method: "DELETE",
+    fields: { task: "input" },
+  },
+  {
+    name: "Get Users Assigned To task",
+    endpoint: "/api/project/task/assignees",
+    method: "GET",
     fields: { task: "input" },
   },
   // {

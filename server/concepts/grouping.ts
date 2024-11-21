@@ -29,10 +29,6 @@ export default class GroupItemConcept {
     return { msg: "Removed item from group!" };
   }
 
-  async getAllGroupItems() {
-    return await this.groupitems.readMany({});
-  }
-
   // get all items in a group
   async getItemsInGroup(group: ObjectId) {
     const items = await this.groupitems.readMany({ group }, { projection: { item: 1 } });
@@ -50,6 +46,13 @@ export default class GroupItemConcept {
   async deleteAllItemsInGroup(group: ObjectId) {
     await this.groupitems.deleteMany({ group });
     return { msg: "Deleted all instances of group!" };
+  }
+
+  // delete item from all groups that it is in
+  // use when deleting an item
+  async deleteItemFromAllGroups(item: ObjectId) {
+    await this.groupitems.deleteMany({ item });
+    return { msg: "Deleted all instances of item!" };
   }
 
   // assert that an item is in a given group
